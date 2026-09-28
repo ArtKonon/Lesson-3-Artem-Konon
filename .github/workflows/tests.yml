@@ -1,0 +1,144 @@
+name: Домашнє завдання · Урок 3 (Go + GenAI)
+
+# Запускається автоматично при push у main і при кожному Pull Request.
+# Реалізує повний чекліст ідіоматичного Go з цього заняття:
+# gofmt, go vet, тести з покриттям, збірка проєкту.
+#
+# ВАЖЛИВО: кожен крок нижче має `continue-on-error: true`, тому один
+# провалений крок (наприклад, незаповнений звіт) НЕ приховує помилки
+# в наступних кроках (gofmt, go vet, go test). Усі перевірки завжди
+# виконуються повністю, а фінальний крок "Підсумок перевірки" сам
+# вирішує, зелений build чи червоний, на основі результатів усіх
+# кроків — так студент бачить УВЕСЬ обсяг незробленої роботи одразу,
+# а не лише першу помилку.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Форматування, лінт і тести
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Отримати код репозиторію
+        uses: actions/checkout@v4
+
+      - name: Встановити Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Перевірити структуру репозиторію
+        id: structure
+        continue-on-error: true
+        run: |
+          missing=0
+          for f in README.md REPORT.md \
+                   payment/payment.go wallet/wallet.go orders/orders.go \
+                   prompts/interface-extraction-prompt.md; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Відсутній обов'язковий файл: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+          echo "✅ Усі обов'язкові файли на місці"
+
+      - name: Перевірити промпт (Розділ 2)
+        id: prompt
+        continue-on-error: true
+        run: |
+          f="prompts/interface-extraction-prompt.md"
+          if grep -q "TODO(розділ-2)" "$f"; then
+            echo "❌ $f ще містить TODO-заглушку."
+            echo "Видаліть HTML-коментар і вставте текст свого промпту."
+            exit 1
+          fi
+          echo "✅ Промпт Розділу 2 заповнено"
+
+      - name: Перевірити звіт (REPORT.md)
+        id: report
+        continue-on-error: true
+        run: |
+          missing=0
+          for marker in "TODO(звіт-1)" "TODO(звіт-3)" "TODO(звіт-4)"; do
+            if grep -q "$marker" REPORT.md; then
+              echo "❌ REPORT.md ще містить заглушку: $marker"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Заповніть усі розділи REPORT.md звичайним видимим текстом."
+            exit 1
+          fi
+          echo "✅ REPORT.md заповнено повністю"
+
+      - name: Перевірити форматування (gofmt)
+        id: fmt
+        continue-on-error: true
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "❌ Наступні файли не відформатовано за допомогою gofmt:"
+            echo "$unformatted"
+            echo ""
+            echo "Запустіть локально: gofmt -w ."
+            exit 1
+          fi
+          echo "✅ Форматування в порядку"
+
+      - name: Статичний аналіз (go vet)
+        id: vet
+        continue-on-error: true
+        run: go vet ./...
+
+      - name: Запустити тести з покриттям
+        id: test
+        continue-on-error: true
+        run: go test ./... -v -cover
+
+      - name: Зібрати всі бінарники
+        id: build
+        continue-on-error: true
+        run: go build ./...
+
+      # Цей крок ЗАВЖДИ виконується (навіть якщо всі попередні
+      # провалились) і показує зведений статус усіх перевірок в
+      # одному місці, а також коректно провалює job, якщо хоч
+      # один крок вище був червоним.
+      - name: Підсумок перевірки
+        if: always()
+        run: |
+          status=0
+
+          check() {
+            if [ "$1" == "success" ]; then
+              echo "✅ $2"
+            else
+              echo "❌ $2 — див. лог кроку вище"
+              status=1
+            fi
+          }
+
+          check "${{ steps.structure.outcome }}" "Структура репозиторію"
+          check "${{ steps.prompt.outcome }}"    "Промпт Розділу 2"
+          check "${{ steps.report.outcome }}"    "Звіт (REPORT.md)"
+          check "${{ steps.fmt.outcome }}"       "Форматування (gofmt)"
+          check "${{ steps.vet.outcome }}"       "Статичний аналіз (go vet)"
+          check "${{ steps.test.outcome }}"      "Тести (go test)"
+          check "${{ steps.build.outcome }}"     "Збірка (go build)"
+
+          echo ""
+          if [ "$status" -ne 0 ]; then
+            echo "Один або кілька кроків провалились. Розгорніть відповідний"
+            echo "крок вище в цьому запуску, щоб побачити точну причину."
+            exit 1
+          fi
+          echo "Усі перевірки пройдені! 🎉"
