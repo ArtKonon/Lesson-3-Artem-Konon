@@ -15,7 +15,7 @@ type SecureWallet struct {
 // приймач-вказівник, бо змінює стан. Для консистентності Balance()
 // теж має використовувати приймач-вказівник — виправте сигнатуру
 // нижче з "(w SecureWallet)" на "(w *SecureWallet)".
-func (w SecureWallet) Balance() float64 {
+func (w *SecureWallet) Balance() float64 {
 	return w.balance
 }
 
@@ -36,5 +36,7 @@ func (w *SecureWallet) Deposit(amt float64) {
 // wallets) і звертайтеся до wallets[i] напряму — тоді Go зможе
 // автоматично взяти адресу справжнього елемента зрізу.
 func ApplyDeposits(wallets []SecureWallet, amt float64) {
-	// TODO: ваш код тут
+	for i := range wallets {
+		wallets[i].Deposit(amt)
+	}
 }
